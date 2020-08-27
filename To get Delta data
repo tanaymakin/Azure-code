@@ -1,0 +1,150 @@
+"definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "For_each": {
+                "actions": {
+                    "Inserting_Data_for_Logging_in_Integration_database": {
+                        "inputs": {
+                            "body": {
+                                "Direction": "@items('For_each')?['Direction']",
+                                "EndTime": "@{utcNow()}",
+                                "LogicAppId": "@{workflow().run.name}",
+                                "OrderPriority": "@items('For_each')?['OrderPriority']",
+                                "SourceEntity": "@items('For_each')?['SourceEntity']",
+                                "SourceEvent": "@items('For_each')?['SourceEvent']",
+                                "StartTime": "@variables('latest Time')",
+                                "Status": "@items('For_each')?['Status']"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['sql']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/tables/@{encodeURIComponent(encodeURIComponent('[dbo].[LoggingData]'))}/items"
+                        },
+                        "runAfter": {},
+                        "type": "ApiConnection"
+                    }
+                },
+                "foreach": "@body('Stored_Procedure_to_get_delta_data_')?['resultsets']?['Table1']",
+                "runAfter": {
+                    "Stored_Procedure_to_get_delta_data_": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "Getting_latest_time": {
+                "inputs": {
+                    "body": {
+                        "query": " Select max(UpdatedTime)  as LatestTime from [dbo].[TimeTable]"
+                    },
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sql']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/query/sql"
+                },
+                "runAfter": {},
+                "type": "ApiConnection"
+            },
+            "Latest_Time": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "latest Time",
+                            "type": "string",
+                            "value": "@{body('Getting_latest_time')['ResultSets']['Table1'][0]['LatestTime']}"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Getting_latest_time": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Query_to_get_WorkOrderId": {
+                "inputs": {
+                    "body": {
+                        "query": "Select WorkOrderId from [dbo].[WorkOrder] where Id=2"
+                    },
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sql']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/query/sql"
+                },
+                "runAfter": {
+                    "For_each": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection"
+            },
+            "Stored_Procedure_to_get_delta_data_": {
+                "inputs": {
+                    "body": {
+                        "LatestTime": "@variables('latest Time')"
+                    },
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sql']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/procedures/@{encodeURIComponent(encodeURIComponent('[dbo].[DeltaData]'))}"
+                },
+                "runAfter": {
+                    "Latest_Time": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection"
+            },
+            "Update_a_record": {
+                "inputs": {
+                    "body": {
+                        "_ownerid_type": "",
+                        "msdyn_systemstatus": 690970005
+                    },
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['commondataservice']['connectionId']"
+                        }
+                    },
+                    "method": "patch",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('org09977354.crm'))}/tables/@{encodeURIComponent(encodeURIComponent('msdyn_workorders'))}/items/@{encodeURIComponent(encodeURIComponent(body('Query_to_get_WorkOrderId')['ResultSets']['Table1'][0]['WorkOrderId']))}"
+                },
+                "runAfter": {
+                    "Query_to_get_WorkOrderId": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "defaultValue": {},
+                "type": "Object"
+            }
+        },
+        "triggers": {
+            "Recurrence_at_10_min_interval": {
+                "recurrence": {
+                    "frequency": "Week",
+                    "interval": 10
+                },
+                "type": "Recurrence"
+            }
+        }
+    }
