@@ -1,0 +1,264 @@
+// Definition only 
+
+"definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Scope": {
+                "actions": {
+                    "Filter_array_": {
+                        "inputs": {
+                            "from": "@result('Scope_to_update_Priority_in_CRM')",
+                            "where": "@equals(body('Insert_into_DataOperation_in_IntegrationDB')?['Status'], 'Failed')"
+                        },
+                        "runAfter": {
+                            "Scope_to_update_priority_in_CRM": [
+                                "Failed"
+                            ]
+                        },
+                        "type": "Query"
+                    },
+                    "Insert_into_DataOperation_in_IntegrationDB": {
+                        "inputs": {
+                            "body": {
+                                "Direction": "CMS Inbound to D365",
+                                "LogicAppInstnaceID": "@{workflow().run.name}",
+                                "LogicAppName": "@{workflow().name}",
+                                "SourceEntity": "WorkOrder",
+                                "SourceEvent": "Test_Escalation",
+                                "Starttime": "@variables('StartTime')",
+                                "Status": "InProgress"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['sql']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/tables/@{encodeURIComponent(encodeURIComponent('[dbo].[DataOperation]'))}/items"
+                        },
+                        "runAfter": {},
+                        "type": "ApiConnection"
+                    },
+                    "Scope_to_update_priority_in_CRM": {
+                        "actions": {
+                            "Compose_Data_Payload": {
+                                "inputs": {
+                                    "Priority": "@{body('Execute_a_SQL_query_to_get_fields_for_payload')?['resultsets']?['Table3'][0]['PriorityDescription']}",
+                                    "Status": "@{body('Execute_a_SQL_query_to_get_fields_for_payload')?['resultsets']?['Table2'][0]['StatusDescription']}",
+                                    "WorkOrderNumber": "@{body('Execute_a_SQL_query_to_get_DataPayload')?['resultsets']['Table1'][0]['WONumber']}",
+                                    "category": "@{body('Execute_a_SQL_query_to_get_fields_for_payload')?['resultsets']?['Table1'][0]['Category']}"
+                                },
+                                "runAfter": {
+                                    "Execute_a_SQL_query_to_get_fields_for_payload": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Compose"
+                            },
+                            "Execute_a_SQL_query_to_get_DataPayload": {
+                                "inputs": {
+                                    "body": {
+                                        "query": "select IDWOCategory,IDWOStatus,IDWOPriority,WONumber from  [dbo].[WorkOrder]  where IDWorkOrder ='@{triggerBody()?['IdworkOrder']}'\n"
+                                    },
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['sql_1']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/query/sql"
+                                },
+                                "runAfter": {
+                                    "Update_Status_value_in_case_of_escalation": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection"
+                            },
+                            "Execute_a_SQL_query_to_get_fields_for_payload": {
+                                "inputs": {
+                                    "body": {
+                                        "query": "Select category from  [dbo].[Category] where Idcategory ='@{body('Execute_a_SQL_query_to_get_DataPayload')?['resultsets']?['Table1'][0]['IDWOCategory']}'\nSelect StatusDescription from [dbo].[Status] where IdStatus ='@{body('Execute_a_SQL_query_to_get_DataPayload')?['resultsets']?['Table1'][0]['IDWOStatus']}'\nSelect PriorityDescription from [dbo].[Priority] where IdPriority ='@{body('Execute_a_SQL_query_to_get_DataPayload')?['resultsets']?['Table1'][0]['IDWOPriority']}'"
+                                    },
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['sql_1']['connectionId']"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/query/sql"
+                                },
+                                "runAfter": {
+                                    "Execute_a_SQL_query_to_get_DataPayload": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection"
+                            },
+                            "Get_CRMWorkOrder": {
+                                "inputs": {
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['commondataservice_1']['connectionId']"
+                                        }
+                                    },
+                                    "method": "get",
+                                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('medxcelfm.crm'))}/tables/@{encodeURIComponent(encodeURIComponent('msdyn_workorders'))}/items",
+                                    "queries": {
+                                        "$filter": "ava_sourcecmsworkorderid eq '@{triggerBody()?['IdworkOrder']}'"
+                                    }
+                                },
+                                "runAfter": {},
+                                "type": "ApiConnection"
+                            },
+                            "Update_Status_value_in_case_of_escalation": {
+                                "inputs": {
+                                    "body": {
+                                        "_ownerid_type": "",
+                                        "ava_cmsstatuscode": 915240009
+                                    },
+                                    "host": {
+                                        "connection": {
+                                            "name": "@parameters('$connections')['commondataservice_1']['connectionId']"
+                                        }
+                                    },
+                                    "method": "patch",
+                                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('medxcelfm.crm'))}/tables/@{encodeURIComponent(encodeURIComponent('msdyn_workorders'))}/items/@{encodeURIComponent(encodeURIComponent(body('Get_CRMWorkOrder')?['value'][0]['msdyn_workorderid']))}"
+                                },
+                                "runAfter": {
+                                    "Get_CRMWorkOrder": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ApiConnection"
+                            }
+                        },
+                        "runAfter": {
+                            "Insert_into_DataOperation_in_IntegrationDB": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Scope"
+                    },
+                    "Update_DataOperation_Table_In_case_of_Failure": {
+                        "inputs": {
+                            "body": {
+                                "Endtime": "@{utcNow('yyyy-MM-dd HH:mm:ss.fff')}",
+                                "ErrorDescription": "@{body('Filter_array_')}",
+                                "Status": "Failed"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['sql']['connectionId']"
+                                }
+                            },
+                            "method": "patch",
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/tables/@{encodeURIComponent(encodeURIComponent('[dbo].[DataOperation]'))}/items/@{encodeURIComponent(encodeURIComponent(body('Insert_into_DataOperation_in_IntegrationDB')?['ID']))}"
+                        },
+                        "runAfter": {
+                            "Filter_array_": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection"
+                    },
+                    "Update_DataOperation_Table_in_case_of_Success": {
+                        "inputs": {
+                            "body": {
+                                "DataPayload": "@{outputs('Compose_Data_Payload')}",
+                                "Endtime": "@{utcNow('yyyy-MM-dd HH:mm:ss.fff')}",
+                                "Status": "Success"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['sql']['connectionId']"
+                                }
+                            },
+                            "method": "patch",
+                            "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/tables/@{encodeURIComponent(encodeURIComponent('[dbo].[DataOperation]'))}/items/@{encodeURIComponent(encodeURIComponent(body('Insert_into_DataOperation_in_IntegrationDB')?['ID']))}"
+                        },
+                        "runAfter": {
+                            "Scope_to_update_priority_in_CRM": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection"
+                    }
+                },
+                "runAfter": {
+                    "StartTime": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Scope"
+            },
+            "StartTime": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "StartTime",
+                            "type": "string",
+                            "value": "@{utcNow('yyyy-MM-dd HH:mm:ss.fff')}"
+                        }
+                    ]
+                },
+                "runAfter": {},
+                "type": "InitializeVariable"
+            },
+            "Terminate_in_case_of_Failure": {
+                "inputs": {
+                    "runError": {
+                        "code": "400"
+                    },
+                    "runStatus": "Failed"
+                },
+                "runAfter": {
+                    "Scope": [
+                        "Failed"
+                    ]
+                },
+                "type": "Terminate"
+            },
+            "Terminate_in_case_of_Success": {
+                "inputs": {
+                    "runStatus": "Succeeded"
+                },
+                "runAfter": {
+                    "Scope": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Terminate"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "defaultValue": {},
+                "type": "Object"
+            }
+        },
+        "triggers": {
+            "When_an_item_is_created_(V2)": {
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['sql']['connectionId']"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default'))},@{encodeURIComponent(encodeURIComponent('default'))}/tables/@{encodeURIComponent(encodeURIComponent('[dbo].[Table_EscalationTest]'))}/onnewitems",
+                    "queries": {
+                        "$select": "IdworkOrder"
+                    }
+                },
+                "recurrence": {
+                    "frequency": "Month",
+                    "interval": 1
+                },
+                "splitOn": "@triggerBody()?['value']",
+                "type": "ApiConnection"
+            }
+        }
+    }
